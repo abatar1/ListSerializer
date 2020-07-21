@@ -24,7 +24,7 @@ namespace ListSerializer.Tests
             var createdNodes = new List<ListNode>();
             var headNode = new ListNode {Data = Guid.NewGuid().ToString()};
             var currentNode = headNode;
-            for (var i = 0; i < size; i++)
+            for (var i = 0; i < size - 1; i++)
             {
                 var nextNode = new ListNode {Data = Guid.NewGuid().ToString(), Previous = currentNode};
                 currentNode.Next = nextNode;
@@ -42,16 +42,16 @@ namespace ListSerializer.Tests
             return headNode;
         }
 
-        private bool CheckListsForEquality(ListNode leftHead, ListNode rightHead)
+        private bool CheckListsForEquality(ListNode expectedHead, ListNode actualHead)
         {
-            var currentLeftNode = leftHead;
-            var currentRightNode = rightHead;
+            var currentLeftNode = expectedHead;
+            var currentRightNode = actualHead;
             while (currentLeftNode != null)
             {
-                if (currentLeftNode.Data != currentRightNode?.Data) return false;
-                if (currentLeftNode.Random?.Data != currentRightNode?.Random?.Data) return false;
-                if (currentLeftNode.Previous?.Data != currentRightNode?.Previous?.Data) return false;
-                if (currentLeftNode.Next?.Data != currentRightNode?.Next?.Data) return false;
+                Assert.Equal(currentLeftNode.Data, currentRightNode?.Data);
+                Assert.Equal(currentLeftNode.Random?.Data, currentRightNode?.Random?.Data);
+                Assert.Equal(currentLeftNode.Previous?.Data, currentRightNode?.Previous?.Data);
+                Assert.Equal(currentLeftNode.Next?.Data, currentRightNode?.Next?.Data);
                 currentLeftNode = currentLeftNode.Next;
                 currentRightNode = currentRightNode?.Next;
             }
@@ -59,13 +59,13 @@ namespace ListSerializer.Tests
             return true;
         }
 
-        private bool CheckListsForObjectNonEquality(ListNode leftHead, ListNode rightHead)
+        private bool CheckListsForObjectNonEquality(ListNode expectedHead, ListNode actualHead)
         {
-            var currentLeftNode = leftHead;
-            var currentRightNode = rightHead;
+            var currentLeftNode = expectedHead;
+            var currentRightNode = actualHead;
             while (currentLeftNode != null)
             {
-                if (currentLeftNode.GetHashCode() == currentRightNode.GetHashCode()) return false;
+                Assert.NotEqual(currentLeftNode.GetHashCode(), currentRightNode.GetHashCode());
                 currentLeftNode = currentLeftNode.Next;
                 currentRightNode = currentRightNode.Next;
             }
@@ -89,10 +89,70 @@ namespace ListSerializer.Tests
         }
 
         [Fact]
+        public async Task Serializer_SerializeAndDeserialize_SingleHeadNode()
+        {
+            // Arrange
+            var initialHeadNode = GenerateList(1, 1);
+
+            // Act
+            await using var stream = new MemoryStream();
+            await _listSerializer.Serialize(initialHeadNode, stream);
+            var resultHeadNode = await _listSerializer.Deserialize(stream);
+
+            // Assert
+            Assert.True(CheckListsForEquality(initialHeadNode, resultHeadNode));
+        }
+
+        [Fact]
+        public async Task Serializer_DeserializeWithInvalidBuffer_ArgumentException()
+        {
+            // Arrange
+            var stream = new MemoryStream();
+            var buffer = new byte[_random.Next(10)];
+            _random.NextBytes(buffer);
+            await stream.WriteAsync(buffer);
+
+            // Act
+            async Task Func() => await _listSerializer.Deserialize(stream);
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(Func);
+            await stream.DisposeAsync();
+        }
+
+        [Fact]
+        public async Task Serializer_DeserializeEmptyBuffer_ArgumentException()
+        {
+            // Arrange
+            var stream = new MemoryStream();
+
+            // Act
+            async Task Func() => await _listSerializer.Deserialize(stream);
+
+            // Assert
+            await Assert.ThrowsAsync<ArgumentException>(Func);
+            await stream.DisposeAsync();
+        }
+
+        [Fact]
         public async Task Serializer_DeepCopy_HashesNotEqualDataEqual()
         {
             // Arrange
             var initialHeadNode = GenerateList(1000, 1);
+
+            // Act
+            var resultHeadNode = await _listSerializer.DeepCopy(initialHeadNode);
+
+            // Assert
+            Assert.True(CheckListsForEquality(initialHeadNode, resultHeadNode));
+            Assert.True(CheckListsForObjectNonEquality(initialHeadNode, resultHeadNode));
+        }
+
+        [Fact]
+        public async Task Serializer_DeepCopy_SingleHeadNode()
+        {
+            // Arrange
+            var initialHeadNode = GenerateList(1, 1);
 
             // Act
             var resultHeadNode = await _listSerializer.DeepCopy(initialHeadNode);

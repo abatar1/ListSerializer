@@ -55,10 +55,10 @@ namespace ListSerializer.Core
             return node;
         }
 
-        private (ListNode, int byteSize) ReadNodeFromBuffer(byte[] buffer, Dictionary<int, ListNode> passedNodes, int offset)
+        private ListNode ReadNodeFromBuffer(byte[] buffer, Dictionary<int, ListNode> passedNodes, int offset, out int byteSize)
         {
             var packedNode = _listNodePacker.FromBuffer(buffer, offset);
-            if (packedNode.CurrentNodeHashcode == 0) throw new ArgumentException("Wrong data has given.");
+            byteSize = packedNode.ByteSize;
 
             var currentNode = CreateNodeFromHash(passedNodes, packedNode.CurrentNodeHashcode);
             currentNode.Data ??= packedNode.Data;
@@ -70,11 +70,11 @@ namespace ListSerializer.Core
                 currentNode.Next = nextNode;
             }
 
-            if (packedNode.RandomNodeHashcode == 0) return (currentNode, packedNode.ByteSize);
+            if (packedNode.RandomNodeHashcode == 0) return currentNode;
 
             var randomNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeHashcode);
             currentNode.Random = randomNode;
-            return (currentNode, packedNode.ByteSize);
+            return currentNode;
         }
 
         public async Task<ListNode> Deserialize(Stream s)
@@ -94,10 +94,10 @@ namespace ListSerializer.Core
             if (buffer.Length == 0) throw new ArgumentException("Buffer's length is 0.");
 
             var passedNodes = new Dictionary<int, ListNode>();
-            var (headNode, totalOffset) = ReadNodeFromBuffer(buffer, passedNodes, 0);
+            var headNode = ReadNodeFromBuffer(buffer, passedNodes, 0, out var totalOffset);
             while (totalOffset < buffer.Length)
             {
-                var (_, byteSize) = ReadNodeFromBuffer(buffer, passedNodes, totalOffset);
+                ReadNodeFromBuffer(buffer, passedNodes, totalOffset, out var byteSize);
                 totalOffset += byteSize;
             }
             return headNode;
@@ -107,21 +107,21 @@ namespace ListSerializer.Core
         {
             return Task.Run(() =>
             {
-                var clonedNode = CreateNodeFromHash(passedNodes, node.GetHashCode());
-                clonedNode.Data ??= node.Data;
+                var currentNode = CreateNodeFromHash(passedNodes, node.GetHashCode());
+                currentNode.Data ??= node.Data;
 
                 if (node.Next != null)
                 {
-                    var nextClonedNode = CreateNodeFromHash(passedNodes, node.Next.GetHashCode());
-                    nextClonedNode.Previous ??= clonedNode;
-                    clonedNode.Next = nextClonedNode;
+                    var nextNode = CreateNodeFromHash(passedNodes, node.Next.GetHashCode());
+                    nextNode.Previous ??= currentNode;
+                    currentNode.Next = nextNode;
                 }
 
-                if (node.Random == null) return clonedNode;
+                if (node.Random == null) return currentNode;
 
-                var randomClonedNode = CreateNodeFromHash(passedNodes, node.Random.GetHashCode());
-                clonedNode.Random = randomClonedNode;
-                return clonedNode;
+                var randomNode = CreateNodeFromHash(passedNodes, node.Random.GetHashCode());
+                currentNode.Random = randomNode;
+                return currentNode;
             });
         }
 

@@ -77,7 +77,7 @@ namespace ListSerializer.Tests
         public async Task Serializer_SerializeAndDeserialize_TwoHeadsAreEqual()
         {
             // Arrange
-            var initialHeadNode = GenerateList(100, 1);
+            var initialHeadNode = GenerateList(1000, 1);
 
             // Act
             await using var stream = new MemoryStream();
@@ -92,7 +92,7 @@ namespace ListSerializer.Tests
         public async Task Serializer_DeepCopy_HashesNotEqualDataEqual()
         {
             // Arrange
-            var initialHeadNode = GenerateList(100, 1);
+            var initialHeadNode = GenerateList(1000, 1);
 
             // Act
             var resultHeadNode = await _listSerializer.DeepCopy(initialHeadNode);

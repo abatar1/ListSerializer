@@ -11,12 +11,7 @@ namespace ListSerializer.Core
 {
     public class ListSerializer : IListSerializer
     {
-        private readonly ListNodePacker _listNodePacker;
-
-        public ListSerializer()
-        {
-            _listNodePacker = new ListNodePacker();
-        }
+        private readonly ListNodePacker _listNodePacker = new ListNodePacker();
 
         private static IEnumerable<ListNode> GetAllNodes(ListNode headNode)
         {
@@ -39,42 +34,44 @@ namespace ListSerializer.Core
             s.Position = 0;
         }
 
-        private static ListNode CreateNodeFromHash(Dictionary<int, ListNode> passedNodes, int hash)
-        {
-            if (passedNodes.TryGetValue(hash, out var node)) return node;
-            node = new ListNode();
-            passedNodes.Add(hash, node);
-            return node;
-        }
-
         private static ListNode CreateNodeFromHash(ConcurrentDictionary<int, ListNode> passedNodes, int hash)
         {
-            if (passedNodes.TryGetValue(hash, out var node)) return node;
-            node = new ListNode();
-            passedNodes.TryAdd(hash, node);
-            return node;
+            var lazy = new Lazy<ListNode>(() => new ListNode());
+            return passedNodes.GetOrAdd(hash, _ => lazy.Value);
         }
 
-        private ListNode ReadNodeFromBuffer(byte[] buffer, Dictionary<int, ListNode> passedNodes, int offset, out int byteSize)
+        private IEnumerable<PackedListNode> ReadPackedNodesFromBuffer(byte[] buffer, int initialOffset = 0)
         {
-            var packedNode = _listNodePacker.FromBuffer(buffer, offset);
-            byteSize = packedNode.ByteSize;
-
-            var currentNode = CreateNodeFromHash(passedNodes, packedNode.CurrentNodeHashcode);
-            currentNode.Data ??= packedNode.Data;
-
-            if (packedNode.NextNodeHashcode != 0)
+            while (initialOffset < buffer.Length)
             {
-                var nextNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeHashcode);
-                nextNode.Previous ??= currentNode;
-                currentNode.Next = nextNode;
+                var packedNode = _listNodePacker.FromBuffer(buffer, initialOffset);
+                yield return packedNode;
+                initialOffset += packedNode.ByteSize;
             }
+        }
 
-            if (packedNode.RandomNodeHashcode == 0) return currentNode;
+        private Task<ListNode> ReadNodeFromBuffer(PackedListNode packedNode, ConcurrentDictionary<int, ListNode> passedNodes)
+        {
+            return Task.Run(() =>
+            {
+                var currentNode = CreateNodeFromHash(passedNodes, packedNode.CurrentNodeHashcode);
+                currentNode.Data ??= packedNode.Data;
 
-            var randomNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeHashcode);
-            currentNode.Random = randomNode;
-            return currentNode;
+                if (packedNode.NextNodeHashcode != 0)
+                {
+                    var nextNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeHashcode);
+                    nextNode.Previous ??= currentNode;
+                    currentNode.Next = nextNode;
+                }
+
+                if (packedNode.RandomNodeHashcode != 0)
+                {
+                    var randomNode = CreateNodeFromHash(passedNodes, packedNode.RandomNodeHashcode);
+                    currentNode.Random = randomNode;
+                }
+           
+                return currentNode;
+            });
         }
 
         public async Task<ListNode> Deserialize(Stream s)
@@ -93,14 +90,11 @@ namespace ListSerializer.Core
             }
             if (buffer.Length == 0) throw new ArgumentException("Buffer's length is 0.");
 
-            var passedNodes = new Dictionary<int, ListNode>();
-            var headNode = ReadNodeFromBuffer(buffer, passedNodes, 0, out var totalOffset);
-            while (totalOffset < buffer.Length)
-            {
-                ReadNodeFromBuffer(buffer, passedNodes, totalOffset, out var byteSize);
-                totalOffset += byteSize;
-            }
-            return headNode;
+            var passedNodes = new ConcurrentDictionary<int, ListNode>();
+            var nodesTasks = ReadPackedNodesFromBuffer(buffer)
+                .Select(packedNode => ReadNodeFromBuffer(packedNode, passedNodes));
+            var nodes = await Task.WhenAll(nodesTasks);
+            return nodes[0];
         }
 
         private static Task<ListNode> CopyNode(ListNode node, ConcurrentDictionary<int, ListNode> passedNodes)

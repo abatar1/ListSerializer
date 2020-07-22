@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using ListSerializer.Core.Helpers;
@@ -110,6 +111,36 @@ namespace ListSerializer.Core
                 RandomNodeId = _idGenerator.GetId(node.Random),
                 Data = node.Data,
             };
+        }
+
+        private readonly ConcurrentDictionary<long, ListNode> _passedNodes = new ConcurrentDictionary<long, ListNode>();
+
+        private ListNode CreateNodeFromHash(long hash)
+        {
+            var lazy = new Lazy<ListNode>(() => new ListNode());
+            return _passedNodes.GetOrAdd(hash, _ => lazy.Value);
+        }
+
+        public Task<ListNode> RestoreNodeAsync(PackedListNode packedNode)
+        {
+            return Task.Run(() =>
+            {
+                var currentNode = CreateNodeFromHash(packedNode.CurrentNodeId);
+                currentNode.Data = packedNode.Data;
+
+                if (packedNode.NextNodeId != 0)
+                {
+                    var nextNode = CreateNodeFromHash(packedNode.NextNodeId);
+                    nextNode.Previous = currentNode;
+                    currentNode.Next = nextNode;
+                }
+
+                if (packedNode.RandomNodeId == 0) return currentNode;
+
+                var randomNode = CreateNodeFromHash(packedNode.RandomNodeId);
+                currentNode.Random = randomNode;
+                return currentNode;
+            });
         }
     }
 }

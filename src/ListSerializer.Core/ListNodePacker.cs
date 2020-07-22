@@ -7,27 +7,34 @@ namespace ListSerializer.Core
 {
     public struct PackedListNode
     {
-        public int CurrentNodeHashcode;
-        public int NextNodeHashcode;
-        public int RandomNodeHashcode;
+        public long CurrentNodeId;
+        public long NextNodeId;
+        public long RandomNodeId;
         public string Data;
         public int ByteSize;
     }
 
     public class ListNodePacker
     {
+        private readonly UniqueIdGenerator _idGenerator = new UniqueIdGenerator();
+
+        private long GetNodeId(ListNode node)
+        {
+            return node == null ? 0 : _idGenerator.GetId(node);
+        }
+
         /// <summary>
         /// Method marshals <see cref="ListNode"/> into the byte array.
         /// The structure is as follows: 
         /// <list type="bullet">
         /// <item>
-        /// <description>Current Node Hashcode - 4 bytes.</description>
+        /// <description>Current Node Identifier - 8 bytes.</description>
         /// </item>
         /// <item>
-        /// <description>Next Node Hashcode - 4 bytes.</description>
+        /// <description>Next Node Identifier - 8 bytes.</description>
         /// </item>
         /// <item>
-        /// <description>Random Node Hashcode - 4 bytes.</description>
+        /// <description>Random Node Identifier - 8 bytes.</description>
         /// </item>
         /// <item>
         /// <description>Data Size - 4 bytes.</description>
@@ -40,12 +47,12 @@ namespace ListSerializer.Core
         public byte[] ToBytes(ListNode node)
         {
             var dataSize = node.Data.Length * sizeof(char);
-            var resultBytes = new byte[sizeof(int) * 4 + dataSize];
-            MarshalHelper.WriteIntToBuffer(resultBytes, node.GetHashCode(), 0);
-            MarshalHelper.WriteIntToBuffer(resultBytes, node.Next?.GetHashCode() ?? 0, sizeof(int));
-            MarshalHelper.WriteIntToBuffer(resultBytes, node.Random?.GetHashCode() ?? 0, sizeof(int) * 2);
-            MarshalHelper.WriteIntToBuffer(resultBytes, dataSize, sizeof(int) * 3);
-            MarshalHelper.WriteUtf8StringToBuffer(resultBytes, node.Data, dataSize, sizeof(int) * 4);
+            var resultBytes = new byte[sizeof(long) * 3 + sizeof(int) + dataSize];
+            MarshalHelper.WriteLongToBuffer(resultBytes, GetNodeId(node), 0);
+            MarshalHelper.WriteLongToBuffer(resultBytes, GetNodeId(node.Next), sizeof(long));
+            MarshalHelper.WriteLongToBuffer(resultBytes, GetNodeId(node.Random), sizeof(long) * 2);
+            MarshalHelper.WriteIntToBuffer(resultBytes, dataSize, sizeof(long) * 3);
+            MarshalHelper.WriteUtf8StringToBuffer(resultBytes, node.Data, dataSize, sizeof(long) * 3 + sizeof(int));
             return resultBytes;
         }
 
@@ -83,18 +90,18 @@ namespace ListSerializer.Core
         {
             try
             {
-                var currentHashCode = MarshalHelper.ReadIntFromBuffer(buffer, offset);
-                var nextHashCode = MarshalHelper.ReadIntFromBuffer(buffer, sizeof(int) + offset);
-                var randomHashCode = MarshalHelper.ReadIntFromBuffer(buffer, sizeof(int) * 2 + offset);
-                var dataSize = MarshalHelper.ReadIntFromBuffer(buffer, sizeof(int) * 3 + offset);
-                var data = MarshalHelper.ReadUtf8StringFromBuffer(buffer, sizeof(int) * 4 + offset, dataSize);
+                var currentId = MarshalHelper.ReadLongFromBuffer(buffer, offset);
+                var nextId = MarshalHelper.ReadLongFromBuffer(buffer, sizeof(long) + offset);
+                var randomId = MarshalHelper.ReadLongFromBuffer(buffer, sizeof(long) * 2 + offset);
+                var dataSize = MarshalHelper.ReadIntFromBuffer(buffer, sizeof(long) * 3 + offset);
+                var data = MarshalHelper.ReadUtf8StringFromBuffer(buffer, sizeof(long) * 3 + sizeof(int) + offset, dataSize);
                 return new PackedListNode
                 {
-                    CurrentNodeHashcode = currentHashCode,
-                    NextNodeHashcode = nextHashCode,
-                    RandomNodeHashcode = randomHashCode,
+                    CurrentNodeId = currentId,
+                    NextNodeId = nextId,
+                    RandomNodeId = randomId,
                     Data = data,
-                    ByteSize = sizeof(int) * 4 + dataSize
+                    ByteSize = sizeof(long) * 3 + sizeof(int) + dataSize
                 };
             }
             catch (Exception e)
@@ -111,6 +118,17 @@ namespace ListSerializer.Core
         public async Task<PackedListNode> FromBufferAsync(byte[] buffer, int offset)
         {
             return await Task.Run(() => FromBuffer(buffer, offset));
+        }
+
+        public PackedListNode ToPackedListNode(ListNode node)
+        {
+            return new PackedListNode
+            {
+                CurrentNodeId = _idGenerator.GetId(node),
+                NextNodeId = _idGenerator.GetId(node.Next),
+                RandomNodeId = _idGenerator.GetId(node.Random),
+                Data = node.Data,
+            };
         }
     }
 }

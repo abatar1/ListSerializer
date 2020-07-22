@@ -23,18 +23,7 @@ namespace ListSerializer.Core
             }
         }
 
-        public async Task Serialize(ListNode head, Stream s)
-        {
-            Debug.Assert(head.Previous == null, "Head node should be passed to this method.");
-            var tasks = GetAllNodes(head)
-                .Select(_listNodePacker.ToBytesAsync);
-            var conversionTask = await Task.WhenAll(tasks);
-            var bytes = ByteArrayHelper.Combine(conversionTask);
-            s.Write(bytes);
-            s.Position = 0;
-        }
-
-        private static ListNode CreateNodeFromHash(ConcurrentDictionary<int, ListNode> passedNodes, int hash)
+        private static ListNode CreateNodeFromHash(ConcurrentDictionary<long, ListNode> passedNodes, long hash)
         {
             var lazy = new Lazy<ListNode>(() => new ListNode());
             return passedNodes.GetOrAdd(hash, _ => lazy.Value);
@@ -50,28 +39,37 @@ namespace ListSerializer.Core
             }
         }
 
-        private Task<ListNode> ReadNodeFromBuffer(PackedListNode packedNode, ConcurrentDictionary<int, ListNode> passedNodes)
+        private static Task<ListNode> UnpackNode(PackedListNode packedNode, ConcurrentDictionary<long, ListNode> passedNodes)
         {
             return Task.Run(() =>
             {
-                var currentNode = CreateNodeFromHash(passedNodes, packedNode.CurrentNodeHashcode);
-                currentNode.Data ??= packedNode.Data;
+                var currentNode = CreateNodeFromHash(passedNodes, packedNode.CurrentNodeId);
+                currentNode.Data = packedNode.Data;
 
-                if (packedNode.NextNodeHashcode != 0)
+                if (packedNode.NextNodeId != 0)
                 {
-                    var nextNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeHashcode);
-                    nextNode.Previous ??= currentNode;
+                    var nextNode = CreateNodeFromHash(passedNodes, packedNode.NextNodeId);
+                    nextNode.Previous = currentNode;
                     currentNode.Next = nextNode;
                 }
 
-                if (packedNode.RandomNodeHashcode != 0)
-                {
-                    var randomNode = CreateNodeFromHash(passedNodes, packedNode.RandomNodeHashcode);
-                    currentNode.Random = randomNode;
-                }
-           
+                if (packedNode.RandomNodeId == 0) return currentNode;
+
+                var randomNode = CreateNodeFromHash(passedNodes, packedNode.RandomNodeId);
+                currentNode.Random = randomNode;
                 return currentNode;
             });
+        }
+
+        public async Task Serialize(ListNode head, Stream s)
+        {
+            Debug.Assert(head.Previous == null, "Head node should be passed to this method.");
+            var tasks = GetAllNodes(head)
+                .Select(_listNodePacker.ToBytesAsync);
+            var conversionTask = await Task.WhenAll(tasks);
+            var bytes = ByteArrayHelper.Combine(conversionTask);
+            s.Write(bytes);
+            s.Position = 0;
         }
 
         public async Task<ListNode> Deserialize(Stream s)
@@ -90,41 +88,20 @@ namespace ListSerializer.Core
             }
             if (buffer.Length == 0) throw new ArgumentException("Buffer's length is 0.");
 
-            var passedNodes = new ConcurrentDictionary<int, ListNode>();
+            var passedNodes = new ConcurrentDictionary<long, ListNode>();
             var nodesTasks = ReadPackedNodesFromBuffer(buffer)
-                .Select(packedNode => ReadNodeFromBuffer(packedNode, passedNodes));
+                .Select(packedNode => UnpackNode(packedNode, passedNodes));
             var nodes = await Task.WhenAll(nodesTasks);
             return nodes[0];
-        }
-
-        private static Task<ListNode> CopyNode(ListNode node, ConcurrentDictionary<int, ListNode> passedNodes)
-        {
-            return Task.Run(() =>
-            {
-                var currentNode = CreateNodeFromHash(passedNodes, node.GetHashCode());
-                currentNode.Data ??= node.Data;
-
-                if (node.Next != null)
-                {
-                    var nextNode = CreateNodeFromHash(passedNodes, node.Next.GetHashCode());
-                    nextNode.Previous ??= currentNode;
-                    currentNode.Next = nextNode;
-                }
-
-                if (node.Random == null) return currentNode;
-
-                var randomNode = CreateNodeFromHash(passedNodes, node.Random.GetHashCode());
-                currentNode.Random = randomNode;
-                return currentNode;
-            });
         }
 
         public async Task<ListNode> DeepCopy(ListNode head)
         {
             Debug.Assert(head.Previous == null, "Head node should be passed to this method.");
-            var passedNodes = new ConcurrentDictionary<int, ListNode>();
+            var passedNodes = new ConcurrentDictionary<long, ListNode>();
             var cloningTasks = GetAllNodes(head)
-                .Select(node => CopyNode(node, passedNodes));
+                .Select(node => _listNodePacker.ToPackedListNode(node))
+                .Select(node => UnpackNode(node, passedNodes));
             var clonedNodes = await Task.WhenAll(cloningTasks);
             return clonedNodes[0];
         }

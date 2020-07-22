@@ -8,27 +8,41 @@ namespace ListSerializer.Core.Helpers
     {
         public static void WriteIntToBuffer(byte[] buffer, int value, int offset)
         {
-            buffer[0 + offset] = (byte) value;
-            buffer[1 + offset] = (byte) (value >> 8);
-            buffer[2 + offset] = (byte) (value >> 16);
-            buffer[3 + offset] = (byte) (value >> 24);
+            for (var i = 0; i < sizeof(int); i++)
+            {
+                buffer[i + offset] = (byte)(value >> i * 8);
+            }
+        }
+
+        public static void WriteLongToBuffer(byte[] buffer, long value, int offset)
+        {
+            for (var i = 0; i < sizeof(long); i++)
+            {
+                buffer[i + offset] = (byte) (value >> i * 8);
+            }
         }
 
         public static void WriteUtf8StringToBuffer(byte[] buffer, string value, int size, int offset)
         {
+            if (value.Length == 0) return;
             var dataPtr = Marshal.StringToCoTaskMemUTF8(value);
             Marshal.Copy(dataPtr, buffer, offset, size);
             Marshal.FreeHGlobal(dataPtr);
         }
 
+        public static long ReadLongFromBuffer(byte[] buffer, int offset)
+        {
+            return BitConverter.ToInt64(buffer, offset);
+        }
+
         public static int ReadIntFromBuffer(byte[] buffer, int offset)
         {
-            return buffer[0 + offset] | (buffer[1 + offset] << 8) | (buffer[2 + offset] << 16) |
-                   (buffer[3 + offset] << 24);
+            return BitConverter.ToInt32(buffer, offset);
         }
 
         public static string ReadUtf8StringFromBuffer(byte[] bytes, int startIndex, int offset)
         {
+            if (offset == 0) return string.Empty;
             var ptr = Marshal.AllocHGlobal(offset);
             Marshal.Copy(bytes, startIndex, ptr, offset);
             var result = Marshal.PtrToStringUTF8(ptr);

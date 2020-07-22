@@ -1,32 +1,28 @@
-﻿using System;
+﻿using ListSerializer.Core;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using ListSerializer.Core;
 using Xunit;
 
 namespace ListSerializer.Tests
 {
     public class ListSerializerTests
     {
-        private readonly IListSerializer _listSerializer;
-        private readonly Random _random;
-
-        public ListSerializerTests()
-        {
-            _listSerializer = new Core.ListSerializer();
-            _random = new Random();
-        }
+        private readonly IListSerializer _listSerializer = new Core.ListSerializer();
+        private readonly Random _random = new Random();
+        private const int ListSize = 50000;
+        private static string RandomData => Guid.NewGuid().ToString();
 
         private ListNode GenerateList(int size, double randomNodeProbability)
         {
             var createdNodes = new List<ListNode>();
-            var headNode = new ListNode {Data = Guid.NewGuid().ToString()};
+            var headNode = new ListNode { Data = RandomData };
             var currentNode = headNode;
             for (var i = 0; i < size - 1; i++)
             {
-                var nextNode = new ListNode {Data = Guid.NewGuid().ToString(), Previous = currentNode};
+                var nextNode = new ListNode { Data = RandomData, Previous = currentNode };
                 currentNode.Next = nextNode;
                 createdNodes.Add(nextNode);
                 currentNode = nextNode;
@@ -42,7 +38,7 @@ namespace ListSerializer.Tests
             return headNode;
         }
 
-        private bool CheckListsForEquality(ListNode expectedHead, ListNode actualHead)
+        private static bool CheckListsForEquality(ListNode expectedHead, ListNode actualHead)
         {
             var currentLeftNode = expectedHead;
             var currentRightNode = actualHead;
@@ -59,7 +55,7 @@ namespace ListSerializer.Tests
             return true;
         }
 
-        private bool CheckListsForObjectNonEquality(ListNode expectedHead, ListNode actualHead)
+        private static bool CheckListsForObjectNonEquality(ListNode expectedHead, ListNode actualHead)
         {
             var currentLeftNode = expectedHead;
             var currentRightNode = actualHead;
@@ -77,7 +73,7 @@ namespace ListSerializer.Tests
         public async Task Serializer_SerializeAndDeserialize_TwoHeadsAreEqual()
         {
             // Arrange
-            var initialHeadNode = GenerateList(1000, 1);
+            var initialHeadNode = GenerateList(ListSize, 1);
 
             // Act
             await using var stream = new MemoryStream();
@@ -138,7 +134,7 @@ namespace ListSerializer.Tests
         public async Task Serializer_DeepCopy_HashesNotEqualDataEqual()
         {
             // Arrange
-            var initialHeadNode = GenerateList(1000, 1);
+            var initialHeadNode = GenerateList(ListSize, 1);
 
             // Act
             var resultHeadNode = await _listSerializer.DeepCopy(initialHeadNode);

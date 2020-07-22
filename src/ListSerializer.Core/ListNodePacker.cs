@@ -18,10 +18,7 @@ namespace ListSerializer.Core
     {
         private readonly UniqueIdGenerator _idGenerator = new UniqueIdGenerator();
 
-        private long GetNodeId(ListNode node)
-        {
-            return node == null ? 0 : _idGenerator.GetId(node);
-        }
+        private long GetNodeId(ListNode node) => _idGenerator.GetId(node);
 
         /// <summary>
         /// Method marshals <see cref="ListNode"/> into the byte array.
@@ -57,25 +54,7 @@ namespace ListSerializer.Core
         }
 
         /// <summary>
-        /// Method marshals <see cref="ListNode"/> into the byte array.
-        /// The structure is as follows: 
-        /// <list type="bullet">
-        /// <item>
-        /// <description>Current Node Hashcode - 4 bytes.</description>
-        /// </item>
-        /// <item>
-        /// <description>Next Node Hashcode - 4 bytes.</description>
-        /// </item>
-        /// <item>
-        /// <description>Random Node Hashcode - 4 bytes.</description>
-        /// </item>
-        /// <item>
-        /// <description>Data Size - 4 bytes.</description>
-        /// </item>
-        /// <item>
-        /// <description>Data - {Data Size} bytes.</description>
-        /// </item>
-        /// </list>
+        /// Async version of <see cref="ToBytes"/> method.
         /// </summary>
         public async Task<byte[]> ToBytesAsync(ListNode node)
         {
@@ -112,14 +91,16 @@ namespace ListSerializer.Core
         }
 
         /// <summary>
-        /// Method marshals byte array back into <see cref="ListNode"/>.
-        /// Take a look at <see cref="ToBytesAsync"/> description to understand <see cref="PackedListNode"/> structure.
+        /// Async version of <see cref="FromBuffer"/> method.
         /// </summary>
         public async Task<PackedListNode> FromBufferAsync(byte[] buffer, int offset)
         {
             return await Task.Run(() => FromBuffer(buffer, offset));
         }
 
+        /// <summary>
+        /// Method pack <see cref="ListNode"/> into <see cref="PackedListNode"/> without setting <see cref="PackedListNode.ByteSize"/>
+        /// </summary>
         public PackedListNode ToPackedListNode(ListNode node)
         {
             return new PackedListNode
